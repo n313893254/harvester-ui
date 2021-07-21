@@ -45,7 +45,7 @@ export default {
 
   computed: {
     ...mapGetters(['clusterReady', 'isExplorer', 'isMultiCluster', 'isRancher', 'currentCluster',
-      'currentProduct', 'backToRancherLink', 'backToRancherGlobalLink', 'pageActions']),
+      'currentProduct', 'backToRancherLink', 'backToRancherGlobalLink', 'pageActions', 'isVirtualCluster']),
     ...mapGetters('type-map', ['activeProducts']),
 
     appName() {
@@ -182,9 +182,10 @@ export default {
         <BrandImage class="side-menu-logo-img" file-name="rancher-logo.svg" />
       </div>
     </div>
-
-    <TopLevelMenu></TopLevelMenu>
-
+    
+    <TopLevelMenu 
+      v-if="!isVirtualCluster"
+    />
     <div v-if="!simple" class="top">
       <NamespaceFilter v-if="clusterReady && currentProduct && (currentProduct.showNamespaceFilter || isExplorer)" />
       <WorkspaceSwitcher v-else-if="clusterReady && currentProduct && currentProduct.showWorkspaceSwitcher" />
