@@ -374,7 +374,7 @@ export const getters = {
     return getters.isMultiCluster && localCluster?.status?.provider !== VIRTUAL_PROVIDER;
   },
 
-  isCurrentVirtualCluster(state, getters) {
+  isVirtualCluster(state, getters) {
     const cluster = getters['currentCluster'];
 
     return cluster?.status?.provider === VIRTUAL_PROVIDER;
