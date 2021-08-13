@@ -9,9 +9,12 @@ import CreateEditView from '@/mixins/create-edit-view';
 import { CAPI, MANAGEMENT, NORMAN } from '@/config/types';
 import { _CREATE, _EDIT } from '@/config/query-params';
 import { DEFAULT_WORKSPACE } from '@/models/provisioning.cattle.io.cluster';
+import { HCI as HCI_ANNOTATIONS } from '@/config/labels-annotations';
 
 import { findBy, removeObject, clear } from '@/utils/array';
-import { clone, diff, isEmpty, set } from '@/utils/object';
+import {
+  clone, diff, isEmpty, set, get
+} from '@/utils/object';
 import { allHash } from '@/utils/promise';
 import { sortBy } from '@/utils/sort';
 import { camelToTitle, nlToBr } from '@/utils/string';
@@ -572,6 +575,10 @@ export default {
     },
 
     showCloudConfigYaml() {
+      if (this.provider === 'harvester') {
+        return false;
+      }
+
       if ( !this.agentArgs['cloud-provider-name'] ) {
         return false;
       }
@@ -874,6 +881,25 @@ export default {
         btnCb(false);
 
         return;
+      }
+
+      if (this.provider === 'harvester') {
+        const clusterId = get(this.credential, `harvestercredentialConfig.clusterId`);
+        const serverUrl = (this.$store.getters['management/byId'](MANAGEMENT.SETTING, 'server-url') || {}).value;
+
+        const namespace = this.machinePools?.[0]?.config?.vmNamespace;
+        const res = await this.$store.dispatch('management/request', {
+          url:                  `/k8s/clusters/${ clusterId }/v1/harvester/kubeconfig`,
+          method:               'POST',
+          data:                 {
+            serverUrl:          `${ serverUrl }:6443`,
+            clusterRoleName:    'harvesterhci.io:cloudprovider',
+            namespace,
+            serviceAccountName: this.value.metadata.name,
+          },
+        });
+
+        set(this.agentConfig, 'cloud-provider-config', res.data);
       }
 
       try {

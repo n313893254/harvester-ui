@@ -4,7 +4,7 @@ import LabeledInput from '@/components/form/LabeledInput';
 import LabeledSelect from '@/components/form/LabeledSelect';
 import RadioGroup from '@/components/form/RadioGroup';
 
-import { get } from '@/utils/object';
+import { get, set } from '@/utils/object';
 import { MANAGEMENT, VIRTUAL_PROVIDER } from '@/config/types';
 import { HCI } from '@/config/labels-annotations';
 
@@ -25,7 +25,7 @@ export default {
       this.value.setData('clusterType', 'import');
     }
 
-    const cluster = get(this.value, `metadata.annotations."${ HCI.CLUSTER_ID }"`) || '';
+    const cluster = get(this.value, `metadata.annotations."${ HCI.CLUSTER_ID }"`) || get(this.value, 'harvestercredentialConfig.clusterId') || '';
 
     return {
       clusters: [],
@@ -65,6 +65,7 @@ export default {
 
       if (this.isCreate) {
         this.value.setAnnotation(HCI.CLUSTER_ID, neu);
+        set(this.value, 'harvestercredentialConfig.clusterId', neu);
       }
 
       const currentCluster = this.$store.getters['management/all'](MANAGEMENT.CLUSTER).find(x => x.id === neu);
