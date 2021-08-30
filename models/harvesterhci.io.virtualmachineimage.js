@@ -2,11 +2,11 @@ import { HCI } from '@/config/types';
 import {
   DESCRIPTION,
   ANNOTATIONS_TO_IGNORE_REGEX,
-  HCI as HCI_ANNOTATIONS
 } from '@/config/labels-annotations';
-import { get } from '@/utils/object';
+import { get, clone } from '@/utils/object';
 import { findBy } from '@/utils/array';
 import { formatSi } from '@/utils/units';
+import { ucFirst } from '@/utils/string';
 
 export default {
   availableActions() {
@@ -56,7 +56,7 @@ export default {
   },
 
   imageSource() {
-    return get(this.value, `metadata.annotations."${ HCI_ANNOTATIONS.IMAGE_SOURCE }"`) || 'url'; // url is default source
+    return get(this, `spec.sourceType`) || 'download';
   },
 
   annotationsToIgnoreRegexes() {
@@ -64,7 +64,13 @@ export default {
   },
 
   downSize() {
-    return formatSi(this.status?.size, {
+    const size = this.status?.size;
+
+    if (!size) {
+      return '-';
+    }
+
+    return formatSi(size, {
       increment:    1024,
       maxPrecision: 2,
       suffix:       'B',
@@ -75,7 +81,7 @@ export default {
   customValidationRules() {
     const out = [];
 
-    if (this.imageSource === 'url') {
+    if (this.imageSource === 'download') {
       const urlFormat = {
         nullable:       false,
         path:           'spec.url',
@@ -92,8 +98,14 @@ export default {
       out.push(urlFormat, urlRequired);
     }
 
-    if (this.imageSource === 'file') {
-      // File is required!
+    if (this.imageSource === 'upload') {
+      const fileRequired = {
+        nullable:       false,
+        path:           'metadata.annotations',
+        validators:     ['fileRequired'],
+      };
+
+      out.push(fileRequired);
     }
 
     return [
@@ -113,5 +125,34 @@ export default {
       },
       ...out
     ];
+  },
+
+  getStatusConditionOfType() {
+    return (type, defaultValue = []) => {
+      const conditions = Array.isArray(get(this, 'status.conditions')) ? this.status.conditions : defaultValue;
+
+      return conditions.find( cond => cond.type === type);
+    };
+  },
+
+  stateObj() {
+    const state = clone(this.metadata?.state);
+    const initialized = this.getStatusConditionOfType('Initialized');
+    const uploaded = this.getStatusConditionOfType('Uploaded');
+
+    if ([initialized?.status, uploaded?.status].includes('False')) {
+      state.error = true;
+    }
+
+    return state;
+  },
+
+  stateDescription() {
+    const uploaded = this.getStatusConditionOfType('Uploaded');
+
+    const status = uploaded?.status;
+    const message = uploaded?.message;
+
+    return status === 'False' ? ucFirst(message) : '';
   },
 };

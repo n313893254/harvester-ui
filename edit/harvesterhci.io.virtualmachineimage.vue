@@ -5,12 +5,15 @@ import Tab from '@/components/Tabbed/Tab';
 import LabeledInput from '@/components/form/LabeledInput';
 import KeyValue from '@/components/form/KeyValue';
 import NameNsDescription from '@/components/form/NameNsDescription';
+import RadioGroup from '@/components/form/RadioGroup';
 import CreateEditView from '@/mixins/create-edit-view';
-import Cookie from 'js-cookie';
-import customValidators from '@/utils/custom-validators';
 import { _EDIT } from '@/config/query-params';
 import { IMAGE_FILE_FORMAT } from '@/config/constant';
 import { HCI as HCI_ANNOTATIONS } from '@/config/labels-annotations';
+import { exceptionToErrorsArray } from '@/utils/error';
+
+const DOWNLOAD = 'download';
+const UPLOAD = 'upload';
 
 export default {
   name: 'EditImage',
@@ -22,6 +25,7 @@ export default {
     CruResource,
     LabeledInput,
     NameNsDescription,
+    RadioGroup,
   },
 
   mixins: [CreateEditView],
@@ -35,24 +39,23 @@ export default {
 
   data() {
     if ( !this.value.spec ) {
-      this.$set(this.value, 'spec', {});
+      this.$set(this.value, 'spec', { sourceType: DOWNLOAD });
     }
 
     return {
       url:         this.value.spec.url,
-      uploadMode:  'url',
       files:       [],
       displayName: '',
       resource:    '',
       headers:     {},
       fileUrl:     '',
-      fileSize:    { 'File-Size': '' }
+      file:        '',
     };
   },
 
   computed: {
     uploadFileName() {
-      return this.files[0]?.name || '';
+      return this.file?.name || '';
     },
 
     isEdit() {
@@ -78,55 +81,65 @@ export default {
       this.displayName = neu;
     },
 
-    uploadMode(neu) {
-      this.$set(this, 'files', []);
+    'value.spec.sourceType'(neu) {
+      this.$set(this, 'file', null);
       this.url = '';
-    }
+
+      if (this.$refs?.file?.value) {
+        this.$refs.file.value = null;
+      }
+    },
   },
 
   methods: {
-    inputFile(newFile, oldFile) {
-      const file = newFile || oldFile;
-      const csrf = Cookie.get('CSRF');
-      const header = { 'X-Api-Csrf': csrf, 'File-Size': file.size };
-
-      file.headers = header;
-    },
-
-    inputFilter(newFile, oldFile, prevent) {
-      this.errors = customValidators.imageUrl(newFile.name, this.$store.getters, [], '', 'file');
-
-      if (!/\.(gz|qcow|qcow2|raw|img|xz|iso)$/i.test(newFile.name.toLowerCase())) {
-        return prevent();
-      }
-    },
-
     async saveImage(buttonCb) {
       this.value.metadata.generateName = 'image-';
 
-      Object.assign(this.value.metadata.annotations, {
-        ...this.value.metadata.annotations,
-        [HCI_ANNOTATIONS.IMAGE_SOURCE]: this.uploadMode // url or file
-      });
-
-      if (this.uploadMode !== 'url') {
+      if (this.value.spec.sourceType === UPLOAD) {
         try {
+          this.value.spec.url = '';
+
+          Object.assign(this.value.metadata.annotations, {
+            ...this.value.metadata.annotations,
+            [HCI_ANNOTATIONS.IMAGE_NAME]: this.file?.name,
+          });
+
           const res = await this.value.save({ extend: { isRes: true } });
 
-          const fileUrl = `v1/harvesterhci.io.virtualmachineimages/${ res.id }?action=upload`;
+          // Workaround: 15s is backend bug
+          await new Promise(resolve => setTimeout(resolve, 15000));
 
-          this.files[0].postAction = fileUrl;
-          this.$refs.upload.active = true;
+          const formData = new FormData();
+
+          formData.append('chunk', this.file);
+
+          this.$axios.post(`/v1/harvester/harvesterhci.io.virtualmachineimages/${ res.id }?action=upload&size=${ this.file.size }`, formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+              'File-Size':    this.file.size,
+            }
+          });
+
           buttonCb(true);
           this.done();
-        } catch (err) {
-          this.errors = [err?.message];
+        } catch (e) {
+          this.errors = exceptionToErrorsArray(e);
           buttonCb(false);
         }
       } else {
         this.save(buttonCb);
       }
-    }
+    },
+
+    handleFileUpload() {
+      this.file = this.$refs.file.files[0];
+    },
+
+    selectFile() {
+      // Clear the value so the user can reselect the same file again
+      this.$refs.file.value = null;
+      this.$refs.file.click();
+    },
   },
 
 };
@@ -153,9 +166,24 @@ export default {
 
     <Tabbed v-bind="$attrs" class="mt-15" :side-tabs="true">
       <Tab name="basic" :label="t('harvester.image.tabs.basics')" :weight="3" class="bordered-table">
+        <RadioGroup
+          v-if="isCreate"
+          v-model="value.spec.sourceType"
+          name="model"
+          :options="[
+            'download',
+            'upload',
+          ]"
+          :labels="[
+            t('harvester.image.sourceType.download'),
+            t('harvester.image.sourceType.upload'),
+          ]"
+          :mode="mode"
+        />
         <div class="row mb-20 mt-20">
           <div class="col span-12">
             <LabeledInput
+              v-if="value.spec.sourceType === 'download'"
               v-model="value.spec.url"
               :mode="mode"
               :disabled="isEdit"
@@ -169,6 +197,34 @@ export default {
                 </label>
               </template>
             </LabeledInput>
+
+            <div v-else>
+              <button
+                type="button"
+                class="btn role-primary"
+                @click="selectFile"
+              >
+                <span>
+                  {{ t('harvester.image.uploadFile') }}
+                </span>
+                <input
+                  v-show="false"
+                  id="file"
+                  ref="file"
+                  type="file"
+                  accept=".gz, .qcow, .qcow2, .raw, .img, .xz, .iso"
+                  @change="handleFileUpload()"
+                />
+              </button>
+
+              <div
+                v-if="uploadFileName"
+                class="fileName mt-5"
+              >
+                <span class="icon icon-file" />
+                {{ uploadFileName }}
+              </div>
+            </div>
           </div>
         </div>
       </Tab>
